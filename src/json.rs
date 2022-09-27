@@ -138,7 +138,7 @@ impl AgentSpec {
         });
     }
 
-    pub unsafe fn fromAgent(agent: &dyn Agent) -> Self {
+    pub unsafe fn from_agent(agent: &dyn Agent) -> Self {
         AgentSpec {
             uuid: agent.uuid().clone(),
             actions: agent

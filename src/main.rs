@@ -1,5 +1,6 @@
 mod json;
 mod performance_relationships;
+mod runner;
 
 use std::{
     collections::HashMap,
@@ -15,6 +16,7 @@ use belief_spread::{
 use clap::Parser;
 use json::{AgentSpec, BehaviourSpec, BeliefSpec, PerformanceRelationshipSpec};
 use performance_relationships::{vec_prs_to_performance_relationships, PerformanceRelationships};
+use runner::Runner;
 use uuid::Uuid;
 
 /// The arguments of the command-line interface
@@ -76,7 +78,7 @@ struct Cli {
 }
 
 /// The configuration of the model.
-struct Configuration {
+pub struct Configuration {
     /// The [Behaviour]s in the model.
     behaviours: *const [*const dyn Behaviour],
 
@@ -97,6 +99,15 @@ struct Configuration {
 
     /// The performance relationships in the model.
     prs: PerformanceRelationships,
+
+    /// Start time.
+    start_time: SimTime,
+
+    /// End time.
+    end_time: SimTime,
+
+    /// Output file
+    output_file: File,
 }
 
 fn main() -> Result<()> {
@@ -110,6 +121,10 @@ fn main() -> Result<()> {
         beliefs_mut: slice_from_raw_parts_mut(null_mut(), 0),
         agents_mut: slice_from_raw_parts_mut(null_mut(), 0),
         prs: HashMap::new(),
+        start_time: args.start_time,
+        end_time: args.end_time,
+        output_file: File::create(&args.output_file)
+            .with_context(|| format!("File {} doesn't exist!", &args.output_file.display()))?,
     });
 
     // Process behaviours
@@ -187,6 +202,12 @@ fn main() -> Result<()> {
 
     unsafe {
         config.prs = read_prs_json(&args.prs_file, config.beliefs, config.behaviours)?;
+    }
+
+    let mut run = Runner { config };
+
+    unsafe {
+        run.run()?;
     }
 
     Ok(())
