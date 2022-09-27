@@ -1,7 +1,11 @@
 mod json;
 
-use belief_spread::SimTime;
+use std::{fs::File, io};
+
+use anyhow::{Context, Result};
+use belief_spread::{BasicBehaviour, SimTime};
 use clap::Parser;
+use json::BehaviourSpec;
 
 /// The arguments of the command-line interface
 #[derive(Parser, Debug)]
@@ -23,8 +27,33 @@ struct Cli {
         default_value = "output.json"
     )]
     output_file: std::path::PathBuf,
+
+    /// The behaviours.json file
+    #[clap(
+        parse(from_os_str),
+        short = 'b',
+        long = "behaviours.json",
+        default_value = "behaviours.json"
+    )]
+    behaviours_file: std::path::PathBuf,
 }
 
-fn main() {
-    let _args = Cli::parse();
+fn main() -> Result<()> {
+    let args = Cli::parse();
+
+    let _behaviours = read_behaviours_json(&args.behaviours_file)?;
+
+    Ok(())
+}
+
+fn read_behaviours_json(path: &std::path::Path) -> Result<Vec<BasicBehaviour>> {
+    let file = File::open(path)
+        .with_context(|| format!("Failed to read behaviours from {}", path.display()))?;
+    let reader = io::BufReader::new(file);
+    let behaviours: Vec<BehaviourSpec> =
+        serde_json::from_reader(reader).with_context(|| "behaviours.json invalid")?;
+    Ok(behaviours
+        .into_iter()
+        .map(|spec| spec.to_basic_behaviour())
+        .collect())
 }
