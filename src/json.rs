@@ -137,6 +137,39 @@ impl AgentSpec {
                 .unwrap()
         });
     }
+
+    pub unsafe fn fromAgent(agent: &dyn Agent) -> Self {
+        AgentSpec {
+            uuid: agent.uuid().clone(),
+            actions: agent
+                .get_actions()
+                .iter()
+                .map(|(&k, v)| (k, v.as_ref().unwrap().uuid().clone()))
+                .collect(),
+            activations: agent
+                .get_activations()
+                .iter()
+                .map(|(&k1, v1)| {
+                    (
+                        k1,
+                        v1.iter()
+                            .map(|(k2, &v2)| (k2.as_ref().unwrap().uuid().clone(), v2))
+                            .collect(),
+                    )
+                })
+                .collect(),
+            deltas: agent
+                .get_deltas()
+                .iter()
+                .map(|(k, &v)| (k.as_ref().unwrap().uuid().clone(), v))
+                .collect(),
+            friends: agent
+                .get_friends()
+                .iter()
+                .map(|(k, &v)| (k.as_ref().unwrap().uuid().clone(), v))
+                .collect(),
+        }
+    }
 }
 
 mod test {
