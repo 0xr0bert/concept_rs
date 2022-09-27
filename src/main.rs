@@ -7,9 +7,9 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use belief_spread::{Agent, BasicBehaviour, Behaviour, Belief, SimTime};
+use belief_spread::{Agent, BasicBehaviour, BasicBelief, Behaviour, Belief, SimTime};
 use clap::Parser;
-use json::BehaviourSpec;
+use json::{BehaviourSpec, BeliefSpec};
 
 /// The arguments of the command-line interface
 #[derive(Parser, Debug)]
@@ -36,10 +36,19 @@ struct Cli {
     #[clap(
         parse(from_os_str),
         short = 'b',
-        long = "behaviours.json",
+        long = "behaviours",
         default_value = "behaviours.json"
     )]
     behaviours_file: std::path::PathBuf,
+
+    /// The beliefs.json file
+    #[clap(
+        parse(from_os_str),
+        short = 'c',
+        long = "beliefs",
+        default_value = "beliefs.json"
+    )]
+    beliefs_file: std::path::PathBuf,
 }
 
 /// The configuration of the model.
@@ -75,6 +84,8 @@ fn main() -> Result<()> {
         agents_mut: slice_from_raw_parts_mut(null_mut(), 0),
     });
 
+    // Process behaviours
+
     let mut behaviours = read_behaviours_json(&args.behaviours_file)?;
 
     let mut behaviours_ptrs_mut: Vec<*mut dyn Behaviour> = behaviours
@@ -95,6 +106,28 @@ fn main() -> Result<()> {
 
     config.behaviours = behaviours_ptrs_slice;
 
+    // Process beliefs
+
+    let (belief_specs, mut beliefs) = read_belief_json(&args.beliefs_file, &config)?;
+
+    let mut beliefs_ptrs_mut: Vec<*mut dyn Belief> =
+        beliefs.iter_mut().map(|b| b as *mut dyn Belief).collect();
+
+    let beliefs_ptr_mut_slice: &mut [*mut dyn Belief] = &mut beliefs_ptrs_mut;
+
+    config.beliefs_mut = beliefs_ptr_mut_slice;
+
+    let beliefs_ptrs: Vec<*const dyn Belief> =
+        beliefs.iter().map(|b| b as *const dyn Belief).collect();
+
+    let beliefs_ptrs_slice: &[*const dyn Belief] = &&beliefs_ptrs;
+
+    config.beliefs = beliefs_ptrs_slice;
+
+    belief_specs
+        .iter()
+        .for_each(|b| unsafe { b.link_belief_relationships(config.beliefs_mut) });
+
     Ok(())
 }
 
@@ -108,4 +141,20 @@ fn read_behaviours_json(path: &std::path::Path) -> Result<Vec<BasicBehaviour>> {
         .into_iter()
         .map(|spec| spec.to_basic_behaviour())
         .collect())
+}
+
+fn read_belief_json(
+    path: &std::path::Path,
+    config: &Configuration,
+) -> Result<(Vec<BeliefSpec>, Vec<BasicBelief>)> {
+    let file = File::open(path)
+        .with_context(|| format!("Failed to read beliefs from {}", path.display()))?;
+    let reader = io::BufReader::new(file);
+    let belief_specs: Vec<BeliefSpec> =
+        serde_json::from_reader(reader).with_context(|| "beliefs.json invalid")?;
+    let beliefs = belief_specs
+        .iter()
+        .map(|spec| unsafe { spec.to_basic_belief(config.behaviours) })
+        .collect();
+    Ok((belief_specs, beliefs))
 }

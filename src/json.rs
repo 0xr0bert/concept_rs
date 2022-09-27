@@ -1,4 +1,6 @@
-use belief_spread::BasicBehaviour;
+use std::collections::HashMap;
+
+use belief_spread::{BasicBehaviour, BasicBelief, Behaviour, Belief};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -16,6 +18,51 @@ impl BehaviourSpec {
     /// Convert this [BehaviourSpec] into a [BasicBehaviour].
     pub fn to_basic_behaviour(self) -> BasicBehaviour {
         BasicBehaviour::new_with_uuid(self.name, self.uuid)
+    }
+}
+
+#[derive(Deserialize, Serialize, Debug)]
+pub struct BeliefSpec {
+    pub name: String,
+    #[serde(default = "Uuid::new_v4")]
+    pub uuid: Uuid,
+    #[serde(default = "HashMap::new")]
+    pub perceptions: HashMap<Uuid, f64>,
+    #[serde(default = "HashMap::new")]
+    pub relationships: HashMap<Uuid, f64>,
+}
+
+impl BeliefSpec {
+    pub unsafe fn to_basic_belief(&self, behaviours: *const [*const dyn Behaviour]) -> BasicBelief {
+        let mut b = BasicBelief::new_with_uuid(self.name.clone(), self.uuid);
+        behaviours.as_ref().unwrap().iter().for_each(|beh| {
+            match self.perceptions.get(beh.as_ref().unwrap().uuid()) {
+                Some(&v) => b.set_perception(*beh, Some(v)).unwrap(),
+                None => (),
+            }
+        });
+        b
+    }
+
+    pub unsafe fn link_belief_relationships(&self, beliefs: *mut [*mut dyn Belief]) {
+        let uuid_beliefs: HashMap<&Uuid, *mut dyn Belief> = beliefs
+            .as_ref()
+            .unwrap()
+            .into_iter()
+            .map(|b| (b.as_ref().unwrap().uuid(), *b))
+            .collect();
+        self.relationships
+            .iter()
+            .for_each(|(r, &v)| match uuid_beliefs.get(&r) {
+                Some(b) => uuid_beliefs
+                    .get(&self.uuid)
+                    .unwrap()
+                    .as_mut()
+                    .unwrap()
+                    .set_relationship(*b, Some(v))
+                    .unwrap(),
+                None => (),
+            })
     }
 }
 
