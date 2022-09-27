@@ -92,6 +92,7 @@ dependencies = [
 name = "concept"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "belief-spread",
  "clap",
  "serde",
