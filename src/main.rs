@@ -8,6 +8,10 @@ struct Cli {
     /// The start time of the simulation
     #[clap(short = 's', long = "start", value_parser, default_value_t = 1)]
     start_time: SimTime,
+
+    /// The end time of the simulation
+    #[clap(short = 'e', long = "end", value_parser, default_value_t = 1)]
+    end_time: SimTime,
 }
 
 fn main() {
