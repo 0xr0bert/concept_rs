@@ -1,4 +1,5 @@
 mod json;
+mod performance_relationships;
 
 use std::{
     collections::HashMap,
@@ -12,7 +13,8 @@ use belief_spread::{
     Agent, BasicAgent, BasicBehaviour, BasicBelief, Behaviour, Belief, SimTime, UUIDd,
 };
 use clap::Parser;
-use json::{AgentSpec, BehaviourSpec, BeliefSpec};
+use json::{AgentSpec, BehaviourSpec, BeliefSpec, PerformanceRelationshipSpec};
+use performance_relationships::{vec_prs_to_performance_relationships, PerformanceRelationships};
 use uuid::Uuid;
 
 /// The arguments of the command-line interface
@@ -62,6 +64,15 @@ struct Cli {
         default_value = "agents.json"
     )]
     agents_file: std::path::PathBuf,
+
+    /// The prs.json file
+    #[clap(
+        parse(from_os_str),
+        short = 'p',
+        long = "performance-relationships",
+        default_value = "prs.json"
+    )]
+    prs_file: std::path::PathBuf,
 }
 
 /// The configuration of the model.
@@ -83,6 +94,9 @@ struct Configuration {
 
     /// The mutable [Agent]s in the model.
     agents_mut: *mut [*mut dyn Agent],
+
+    /// The performance relationships in the model.
+    prs: PerformanceRelationships,
 }
 
 fn main() -> Result<()> {
@@ -95,6 +109,7 @@ fn main() -> Result<()> {
         behaviours_mut: slice_from_raw_parts_mut(null_mut(), 0),
         beliefs_mut: slice_from_raw_parts_mut(null_mut(), 0),
         agents_mut: slice_from_raw_parts_mut(null_mut(), 0),
+        prs: HashMap::new(),
     });
 
     // Process behaviours
@@ -168,6 +183,12 @@ fn main() -> Result<()> {
         .iter()
         .for_each(|spec| unsafe { spec.link_friends(&uuid_agents) });
 
+    // Process performance relationships
+
+    unsafe {
+        config.prs = read_prs_json(&args.prs_file, config.beliefs, config.behaviours)?;
+    }
+
     Ok(())
 }
 
@@ -214,4 +235,38 @@ fn read_agent_json(
         .map(|spec| unsafe { spec.to_basic_agent(behaviours, beliefs) })
         .collect();
     Ok((agent_specs, agents))
+}
+
+unsafe fn read_prs_json(
+    path: &std::path::Path,
+    beliefs: *const [*const dyn Belief],
+    behaviours: *const [*const dyn Behaviour],
+) -> Result<PerformanceRelationships> {
+    let file = File::open(path).with_context(|| {
+        format!(
+            "Failed to read performance relationships from {}",
+            path.display()
+        )
+    })?;
+    let reader = io::BufReader::new(file);
+    let prss: Vec<PerformanceRelationshipSpec> =
+        serde_json::from_reader(reader).with_context(|| "prs.json invalid")?;
+    let uuid_beliefs: HashMap<Uuid, *const dyn Belief> = beliefs
+        .as_ref()
+        .unwrap()
+        .iter()
+        .map(|b| (b.as_ref().unwrap().uuid().clone(), *b))
+        .collect();
+
+    let uuid_behaviours: HashMap<Uuid, *const dyn Behaviour> = behaviours
+        .as_ref()
+        .unwrap()
+        .iter()
+        .map(|b| (b.as_ref().unwrap().uuid().clone(), *b))
+        .collect();
+    Ok(vec_prs_to_performance_relationships(
+        &prss,
+        &uuid_beliefs,
+        &uuid_behaviours,
+    ))
 }

@@ -80,6 +80,14 @@ pub struct AgentSpec {
     pub friends: HashMap<Uuid, f64>,
 }
 
+#[derive(Deserialize, Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct PerformanceRelationshipSpec {
+    pub behaviour_uuid: Uuid,
+    pub belief_uuid: Uuid,
+    pub value: f64,
+}
+
 impl AgentSpec {
     pub unsafe fn to_basic_agent(
         &self,
