@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use belief_spread::{BasicBehaviour, BasicBelief, Behaviour, Belief};
+use belief_spread::{Agent, BasicAgent, BasicBehaviour, BasicBelief, Behaviour, Belief, SimTime};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -63,6 +63,71 @@ impl BeliefSpec {
                     .unwrap(),
                 None => (),
             })
+    }
+}
+
+#[derive(Deserialize, Serialize, Debug)]
+pub struct AgentSpec {
+    #[serde(default = "Uuid::new_v4")]
+    pub uuid: Uuid,
+    #[serde(default = "HashMap::new")]
+    pub actions: HashMap<SimTime, Uuid>,
+    #[serde(default = "HashMap::new")]
+    pub activations: HashMap<SimTime, HashMap<Uuid, f64>>,
+    #[serde(default = "HashMap::new")]
+    pub deltas: HashMap<Uuid, f64>,
+    #[serde(default = "HashMap::new")]
+    pub friends: HashMap<Uuid, f64>,
+}
+
+impl AgentSpec {
+    pub unsafe fn to_basic_agent(
+        &self,
+        behaviours: *const [*const dyn Behaviour],
+        beliefs: *const [*const dyn Belief],
+    ) -> BasicAgent {
+        let mut a = BasicAgent::new_with_uuid(self.uuid);
+        let uuid_behaviours: HashMap<&Uuid, *const dyn Behaviour> = behaviours
+            .as_ref()
+            .unwrap()
+            .iter()
+            .map(|b| (b.as_ref().unwrap().uuid(), *b))
+            .collect();
+
+        self.actions
+            .iter()
+            .for_each(|(&time, b)| a.set_action(time, Some(*uuid_behaviours.get(&b).unwrap())));
+
+        let uuid_beliefs: HashMap<&Uuid, *const dyn Belief> = beliefs
+            .as_ref()
+            .unwrap()
+            .iter()
+            .map(|b| (b.as_ref().unwrap().uuid(), *b))
+            .collect();
+
+        self.activations.iter().for_each(|(&time, acts)| {
+            acts.iter().for_each(|(b, &v)| {
+                a.set_activation(time, *uuid_beliefs.get(&b).unwrap(), Some(v))
+                    .unwrap()
+            })
+        });
+
+        self.deltas.iter().for_each(|(b, &v)| {
+            a.set_delta(*uuid_beliefs.get(&b).unwrap(), Some(v))
+                .unwrap()
+        });
+
+        a
+    }
+
+    pub unsafe fn link_friends(&self, agents: &HashMap<Uuid, *mut dyn Agent>) {
+        let this_agent = agents.get(&self.uuid).unwrap().as_mut().unwrap();
+
+        self.friends.iter().for_each(|(a, &v)| {
+            this_agent
+                .set_friend_weight(*agents.get(a).unwrap(), Some(v))
+                .unwrap()
+        });
     }
 }
 

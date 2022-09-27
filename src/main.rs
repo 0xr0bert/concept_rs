@@ -1,15 +1,19 @@
 mod json;
 
 use std::{
+    collections::HashMap,
     fs::File,
     io,
     ptr::{null, null_mut, slice_from_raw_parts, slice_from_raw_parts_mut},
 };
 
 use anyhow::{Context, Result};
-use belief_spread::{Agent, BasicBehaviour, BasicBelief, Behaviour, Belief, SimTime};
+use belief_spread::{
+    Agent, BasicAgent, BasicBehaviour, BasicBelief, Behaviour, Belief, SimTime, UUIDd,
+};
 use clap::Parser;
-use json::{BehaviourSpec, BeliefSpec};
+use json::{AgentSpec, BehaviourSpec, BeliefSpec};
+use uuid::Uuid;
 
 /// The arguments of the command-line interface
 #[derive(Parser, Debug)]
@@ -49,6 +53,15 @@ struct Cli {
         default_value = "beliefs.json"
     )]
     beliefs_file: std::path::PathBuf,
+
+    /// The agents.json file
+    #[clap(
+        parse(from_os_str),
+        short = 'a',
+        long = "agents",
+        default_value = "agents.json"
+    )]
+    agents_file: std::path::PathBuf,
 }
 
 /// The configuration of the model.
@@ -128,6 +141,33 @@ fn main() -> Result<()> {
         .iter()
         .for_each(|b| unsafe { b.link_belief_relationships(config.beliefs_mut) });
 
+    // Process agents
+
+    let (agent_specs, mut agents) =
+        read_agent_json(&args.agents_file, config.beliefs, config.behaviours)?;
+
+    let mut agents_ptrs_mut: Vec<*mut dyn Agent> =
+        agents.iter_mut().map(|a| a as *mut dyn Agent).collect();
+
+    let agents_ptr_mut_slice: &mut [*mut dyn Agent] = &mut agents_ptrs_mut;
+
+    config.agents_mut = agents_ptr_mut_slice;
+
+    let agents_ptrs: Vec<*const dyn Agent> = agents.iter().map(|a| a as *const dyn Agent).collect();
+
+    let agent_ptrs_slice: &[*const dyn Agent] = &agents_ptrs;
+
+    config.agents = agent_ptrs_slice;
+
+    let uuid_agents: HashMap<Uuid, *mut dyn Agent> = agents
+        .iter_mut()
+        .map(|a| (a.uuid().clone(), a as *mut dyn Agent))
+        .collect();
+
+    agent_specs
+        .iter()
+        .for_each(|spec| unsafe { spec.link_friends(&uuid_agents) });
+
     Ok(())
 }
 
@@ -157,4 +197,21 @@ fn read_belief_json(
         .map(|spec| unsafe { spec.to_basic_belief(config.behaviours) })
         .collect();
     Ok((belief_specs, beliefs))
+}
+
+fn read_agent_json(
+    path: &std::path::Path,
+    beliefs: *const [*const dyn Belief],
+    behaviours: *const [*const dyn Behaviour],
+) -> Result<(Vec<AgentSpec>, Vec<BasicAgent>)> {
+    let file = File::open(path)
+        .with_context(|| format!("Failed to read agents from {}", path.display()))?;
+    let reader = io::BufReader::new(file);
+    let agent_specs: Vec<AgentSpec> =
+        serde_json::from_reader(reader).with_context(|| "agents.json invalid")?;
+    let agents = agent_specs
+        .iter()
+        .map(|spec| unsafe { spec.to_basic_agent(behaviours, beliefs) })
+        .collect();
+    Ok((agent_specs, agents))
 }
