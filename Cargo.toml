@@ -7,7 +7,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-belief-spread = "0.10.0"
+belief-spread = "0.10.1"
 clap = { version = "3.2.22", features = ["derive"] }
 serde_json = "1.0.85"
 serde = { version = "1.0.145", features = ["derive"]}
