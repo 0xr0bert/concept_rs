@@ -118,20 +118,7 @@ fn main() -> Result<()> {
 
     // Process agents
 
-    let (agent_specs, agents) =
-        read_agent_json(&args.agents_file, &config.beliefs, &config.behaviours)?;
-
-    config.agents = agents;
-
-    let uuid_agents: HashMap<Uuid, AgentPtr> = config
-        .agents
-        .iter()
-        .map(|a| (a.borrow().uuid().clone(), a.clone()))
-        .collect();
-
-    agent_specs
-        .iter()
-        .for_each(|spec| spec.link_friends(&uuid_agents));
+    config.agents = read_agent_json(&args.agents_file, &config.beliefs, &config.behaviours)?;
 
     // Process performance relationships
 
@@ -179,17 +166,26 @@ fn read_agent_json(
     path: &std::path::Path,
     beliefs: &[BeliefPtr],
     behaviours: &[BehaviourPtr],
-) -> Result<(Vec<AgentSpec>, Vec<AgentPtr>)> {
+) -> Result<Vec<AgentPtr>> {
     let file = File::open(path)
         .with_context(|| format!("Failed to read agents from {}", path.display()))?;
     let reader = io::BufReader::new(file);
     let agent_specs: Vec<AgentSpec> =
         serde_json::from_reader(reader).with_context(|| "agents.json invalid")?;
-    let agents = agent_specs
+    let agents: Vec<AgentPtr> = agent_specs
         .iter()
         .map(|spec| spec.to_basic_agent(behaviours, beliefs))
         .collect();
-    Ok((agent_specs, agents))
+    let uuid_agents: HashMap<Uuid, AgentPtr> = agents
+        .iter()
+        .map(|a| (a.borrow().uuid().clone(), a.clone()))
+        .collect();
+
+    agent_specs
+        .iter()
+        .for_each(|spec| spec.link_friends(&uuid_agents));
+
+    Ok(agents)
 }
 
 fn read_prs_json(
