@@ -114,13 +114,7 @@ fn main() -> Result<()> {
 
     // Process beliefs
 
-    let (belief_specs, beliefs) = read_belief_json(&args.beliefs_file, &config.behaviours)?;
-
-    config.beliefs = beliefs;
-
-    belief_specs
-        .iter()
-        .for_each(|b| b.link_belief_relationships(&config.beliefs));
+    config.beliefs = read_belief_json(&args.beliefs_file, &config.behaviours)?;
 
     // Process agents
 
@@ -164,20 +158,21 @@ fn read_behaviours_json(path: &std::path::Path) -> Result<Vec<BehaviourPtr>> {
         .collect())
 }
 
-fn read_belief_json(
-    path: &std::path::Path,
-    behaviours: &[BehaviourPtr],
-) -> Result<(Vec<BeliefSpec>, Vec<BeliefPtr>)> {
+fn read_belief_json(path: &std::path::Path, behaviours: &[BehaviourPtr]) -> Result<Vec<BeliefPtr>> {
     let file = File::open(path)
         .with_context(|| format!("Failed to read beliefs from {}", path.display()))?;
     let reader = io::BufReader::new(file);
     let belief_specs: Vec<BeliefSpec> =
         serde_json::from_reader(reader).with_context(|| "beliefs.json invalid")?;
-    let beliefs = belief_specs
+    let beliefs: Vec<BeliefPtr> = belief_specs
         .iter()
         .map(|spec| spec.to_basic_belief(behaviours))
         .collect();
-    Ok((belief_specs, beliefs))
+
+    belief_specs
+        .iter()
+        .for_each(|spec| spec.link_belief_relationships(&beliefs));
+    Ok(beliefs)
 }
 
 fn read_agent_json(
