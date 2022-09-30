@@ -2,11 +2,10 @@ mod json;
 mod performance_relationships;
 mod runner;
 
-use std::{cell::RefCell, collections::HashMap, fs::File, io, rc::Rc};
+use std::{collections::HashMap, fs::File, io};
 
 use anyhow::{Context, Result};
-use belief_spread::{AgentPtr, BasicBehaviour, BehaviourPtr, BeliefPtr, SimTime};
-use by_address::ByAddress;
+use belief_spread::{AgentPtr, BehaviourPtr, BeliefPtr, SimTime};
 use clap::Parser;
 use json::{AgentSpec, BehaviourSpec, BeliefSpec, PerformanceRelationshipSpec};
 use performance_relationships::{vec_prs_to_performance_relationships, PerformanceRelationships};
@@ -111,15 +110,7 @@ fn main() -> Result<()> {
 
     // Process behaviours
 
-    let behaviours = read_behaviours_json(&args.behaviours_file)?;
-
-    config.behaviours = behaviours
-        .into_iter()
-        .map(|b| {
-            let b_ptr: BehaviourPtr = ByAddress(Rc::new(RefCell::new(b)));
-            b_ptr
-        })
-        .collect();
+    config.behaviours = read_behaviours_json(&args.behaviours_file)?;
 
     // Process beliefs
 
@@ -161,7 +152,7 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn read_behaviours_json(path: &std::path::Path) -> Result<Vec<BasicBehaviour>> {
+fn read_behaviours_json(path: &std::path::Path) -> Result<Vec<BehaviourPtr>> {
     let file = File::open(path)
         .with_context(|| format!("Failed to read behaviours from {}", path.display()))?;
     let reader = io::BufReader::new(file);
@@ -169,7 +160,7 @@ fn read_behaviours_json(path: &std::path::Path) -> Result<Vec<BasicBehaviour>> {
         serde_json::from_reader(reader).with_context(|| "behaviours.json invalid")?;
     Ok(behaviours
         .into_iter()
-        .map(|spec| spec.to_basic_behaviour())
+        .map(|spec| spec.to_basic_behaviour().into())
         .collect())
 }
 

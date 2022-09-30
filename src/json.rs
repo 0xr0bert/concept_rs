@@ -1,10 +1,9 @@
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
+use std::collections::HashMap;
 
 use belief_spread::{
     Agent, AgentPtr, BasicAgent, BasicBehaviour, BasicBelief, BehaviourPtr, Belief, BeliefPtr,
     SimTime,
 };
-use by_address::ByAddress;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -45,7 +44,7 @@ impl BeliefSpec {
                 Some(&v) => b.set_perception(beh.clone(), Some(v)).unwrap(),
                 None => (),
             });
-        ByAddress(Rc::new(RefCell::new(b)))
+        b.into()
     }
 
     pub fn link_belief_relationships(&self, beliefs: &[BeliefPtr]) {
@@ -118,7 +117,7 @@ impl AgentSpec {
                 .unwrap()
         });
 
-        ByAddress(Rc::new(RefCell::new(a)))
+        a.into()
     }
 
     pub fn link_friends(&self, agents: &HashMap<Uuid, AgentPtr>) {
