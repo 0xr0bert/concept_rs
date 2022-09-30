@@ -35,35 +35,37 @@ pub fn vec_prs_to_performance_relationships(
         .collect()
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use std::collections::HashMap;
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
 
-//     use belief_spread::{BasicBehaviour, BasicBelief, Behaviour, Belief, UUIDd};
-//     use uuid::Uuid;
+    use belief_spread::{BasicBehaviour, BasicBelief, UUIDd};
+    use uuid::Uuid;
 
-//     use crate::json::PerformanceRelationshipSpec;
+    use crate::json::PerformanceRelationshipSpec;
 
-//     use super::vec_prs_to_performance_relationships;
+    use super::*;
 
-//     #[test]
-//     fn test_vec_prs_to_performance_relationships_works() {
-//         let mut prss: Vec<PerformanceRelationshipSpec> = Vec::new();
-//         let belief = BasicBelief::new("b1".to_string());
-//         let behaviour = BasicBehaviour::new("b1".to_string());
-//         prss.push(PerformanceRelationshipSpec {
-//             behaviour_uuid: behaviour.uuid().clone(),
-//             belief_uuid: belief.uuid().clone(),
-//             value: 0.2,
-//         });
-//         let mut beliefs: HashMap<Uuid, *const dyn Belief> = HashMap::new();
-//         beliefs.insert(belief.uuid().clone(), &belief);
+    #[test]
+    fn test_vec_prs_to_performance_relationships_works() {
+        let mut prss: Vec<PerformanceRelationshipSpec> = Vec::new();
+        let belief = BasicBelief::new("b1".to_string());
+        let behaviour = BasicBehaviour::new("b1".to_string());
+        prss.push(PerformanceRelationshipSpec {
+            behaviour_uuid: behaviour.uuid().clone(),
+            belief_uuid: belief.uuid().clone(),
+            value: 0.2,
+        });
+        let mut beliefs: HashMap<Uuid, BeliefPtr> = HashMap::new();
+        let belief_ptr = BeliefPtr::from(belief);
+        beliefs.insert(belief_ptr.borrow().uuid().clone(), belief_ptr.clone());
 
-//         let mut behaviours: HashMap<Uuid, *const dyn Behaviour> = HashMap::new();
-//         behaviours.insert(behaviour.uuid().clone(), &behaviour);
+        let mut behaviours: HashMap<Uuid, BehaviourPtr> = HashMap::new();
+        let behaviour_ptr = BehaviourPtr::from(behaviour);
+        behaviours.insert(behaviour_ptr.borrow().uuid().clone(), behaviour_ptr.clone());
 
-//         let result = vec_prs_to_performance_relationships(&prss, &beliefs, &behaviours);
-//         assert_eq!(result.len(), 1);
-//         assert_eq!(*result.get(&(&belief, &behaviour)).unwrap(), 0.2)
-//     }
-// }
+        let result = vec_prs_to_performance_relationships(&prss, &beliefs, &behaviours);
+        assert_eq!(result.len(), 1);
+        assert_eq!(*result.get(&(belief_ptr, behaviour_ptr)).unwrap(), 0.2)
+    }
+}
