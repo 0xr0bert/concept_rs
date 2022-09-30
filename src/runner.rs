@@ -12,7 +12,7 @@ pub struct Runner {
 }
 
 impl Runner {
-    pub unsafe fn run(&mut self) -> Result<()> {
+    pub fn run(&mut self) -> Result<()> {
         simple_logger::init_with_env().unwrap();
         info!("Starting concept");
         info!("n beliefs: {}", self.config.beliefs.len());
@@ -41,13 +41,13 @@ impl Runner {
         Ok(())
     }
 
-    unsafe fn tick_between(&mut self, start: SimTime, end: SimTime) {
+    fn tick_between(&mut self, start: SimTime, end: SimTime) {
         for t in start..=end {
             self.tick(t);
         }
     }
 
-    unsafe fn tick(&mut self, time: SimTime) {
+    fn tick(&mut self, time: SimTime) {
         info!("Day {time} - perceiving beliefs");
         self.perceive_beliefs(time);
         info!("Day {time} - performing actions");

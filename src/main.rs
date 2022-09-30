@@ -126,9 +126,7 @@ fn main() -> Result<()> {
 
     let mut run = Runner { config };
 
-    unsafe {
-        run.run()?;
-    }
+    run.run()?;
 
     Ok(())
 }
