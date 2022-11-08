@@ -29,7 +29,7 @@ struct Cli {
         parse(from_os_str),
         short = 'o',
         long = "output",
-        default_value = "output.json"
+        default_value = "output.json.zst"
     )]
     output_file: std::path::PathBuf,
 
@@ -56,7 +56,7 @@ struct Cli {
         parse(from_os_str),
         short = 'a',
         long = "agents",
-        default_value = "agents.json"
+        default_value = "agents.json.zst"
     )]
     agents_file: std::path::PathBuf,
 
@@ -168,8 +168,9 @@ fn read_agent_json(
     let file = File::open(path)
         .with_context(|| format!("Failed to read agents from {}", path.display()))?;
     let reader = io::BufReader::new(file);
+    let reader_zstd = zstd::stream::read::Decoder::new(reader)?;
     let agent_specs: Vec<AgentSpec> =
-        serde_json::from_reader(reader).with_context(|| "agents.json invalid")?;
+        serde_json::from_reader(reader_zstd).with_context(|| "agents.json invalid")?;
     let agents: Vec<AgentPtr> = agent_specs
         .iter()
         .map(|spec| spec.to_basic_agent(behaviours, beliefs))

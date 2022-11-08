@@ -37,7 +37,8 @@ impl Runner {
 
         info!("Writing agents to file");
         let writer = std::io::BufWriter::new(&mut self.config.output_file);
-        serde_json::to_writer(writer, &specs)?;
+        let writer_zstd = zstd::stream::write::Encoder::new(writer, 3)?;
+        serde_json::to_writer(writer_zstd, &specs)?;
         Ok(())
     }
 
