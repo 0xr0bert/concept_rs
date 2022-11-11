@@ -14,7 +14,7 @@ use uuid::Uuid;
 
 /// The arguments of the command-line interface
 #[derive(Parser, Debug)]
-#[clap(author, version, about, long_about = None)]
+#[command(author, version, about, long_about = None)]
 struct Cli {
     /// The start time of the simulation
     #[clap(short = 's', long = "start", value_parser, default_value_t = 1)]
@@ -25,44 +25,23 @@ struct Cli {
     end_time: SimTime,
 
     /// The output file
-    #[clap(
-        parse(from_os_str),
-        short = 'o',
-        long = "output",
-        default_value = "output.json.zst"
-    )]
+    #[arg(short = 'o', long = "output", default_value = "output.json.zst")]
     output_file: std::path::PathBuf,
 
     /// The behaviours.json file
-    #[clap(
-        parse(from_os_str),
-        short = 'b',
-        long = "behaviours",
-        default_value = "behaviours.json"
-    )]
+    #[arg(short = 'b', long = "behaviours", default_value = "behaviours.json")]
     behaviours_file: std::path::PathBuf,
 
     /// The beliefs.json file
-    #[clap(
-        parse(from_os_str),
-        short = 'c',
-        long = "beliefs",
-        default_value = "beliefs.json"
-    )]
+    #[arg(short = 'c', long = "beliefs", default_value = "beliefs.json")]
     beliefs_file: std::path::PathBuf,
 
     /// The agents.json file
-    #[clap(
-        parse(from_os_str),
-        short = 'a',
-        long = "agents",
-        default_value = "agents.json.zst"
-    )]
+    #[arg(short = 'a', long = "agents", default_value = "agents.json.zst")]
     agents_file: std::path::PathBuf,
 
     /// The prs.json file
-    #[clap(
-        parse(from_os_str),
+    #[arg(
         short = 'p',
         long = "performance-relationships",
         default_value = "prs.json"
