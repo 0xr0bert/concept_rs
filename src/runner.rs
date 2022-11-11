@@ -1,9 +1,7 @@
 use std::collections::HashMap;
 
 use anyhow::Result;
-use belief_spread::{
-    update_activation_for_all_beliefs_for_agent, Agent, Behaviour, Belief, SimTime,
-};
+use belief_spread::{update_activation_for_all_beliefs_for_agent, AgentPtr, BehaviourPtr, SimTime};
 use log::info;
 use rand::Rng;
 
@@ -14,7 +12,7 @@ pub struct Runner {
 }
 
 impl Runner {
-    pub unsafe fn run(&mut self) -> Result<()> {
+    pub fn run(&mut self) -> Result<()> {
         simple_logger::init_with_env().unwrap();
         info!("Starting concept");
         info!("n beliefs: {}", self.config.beliefs.len());
@@ -28,13 +26,13 @@ impl Runner {
         Ok(())
     }
 
-    pub unsafe fn serialize_agents(&mut self) -> Result<()> {
+    pub fn serialize_agents(&mut self) -> Result<()> {
         info!("Converting agents to AgentSpecs");
         let specs: Vec<AgentSpec> = self
             .config
             .agents
             .iter()
-            .map(|a| AgentSpec::from_agent(*a))
+            .map(AgentSpec::from_agent)
             .collect();
 
         info!("Writing agents to file");
@@ -44,44 +42,42 @@ impl Runner {
         Ok(())
     }
 
-    unsafe fn tick_between(&mut self, start: SimTime, end: SimTime) {
+    fn tick_between(&mut self, start: SimTime, end: SimTime) {
         for t in start..=end {
             self.tick(t);
         }
     }
 
-    unsafe fn tick(&mut self, time: SimTime) {
+    fn tick(&mut self, time: SimTime) {
         info!("Day {time} - perceiving beliefs");
         self.perceive_beliefs(time);
         info!("Day {time} - performing actions");
         self.perform_actions(time);
     }
 
-    unsafe fn perceive_beliefs(&mut self, time: SimTime) {
-        for &a in self.config.agents.iter() {
-            update_activation_for_all_beliefs_for_agent(
-                a as *mut dyn Agent,
-                time,
-                &self.config.beliefs as &[*const dyn Belief] as *const [*const dyn Belief],
-            )
-            .unwrap();
+    fn perceive_beliefs(&mut self, time: SimTime) {
+        for a in self.config.agents.iter() {
+            update_activation_for_all_beliefs_for_agent(a, time, &self.config.beliefs).unwrap();
         }
     }
 
-    unsafe fn agent_perform_action(&self, agent: &*const dyn Agent, time: SimTime) {
-        let mut unnormalized_probs: Vec<(*const dyn Behaviour, f64)> = self
+    fn agent_perform_action(&self, agent: &AgentPtr, time: SimTime) {
+        let mut unnormalized_probs: Vec<(BehaviourPtr, f64)> = self
             .config
             .behaviours
             .iter()
             .map(|behaviour| {
                 (
-                    *behaviour,
+                    behaviour.clone(),
                     self.config
                         .beliefs
                         .iter()
                         .map(|belief| {
-                            self.config.prs.get(&(*belief, *behaviour)).unwrap_or(&0.0)
-                                * (**agent).get_activation(time, *belief).unwrap_or(0.0)
+                            self.config
+                                .prs
+                                .get(&(belief.clone(), behaviour.clone()))
+                                .unwrap_or(&0.0)
+                                * agent.borrow().get_activation(time, belief).unwrap_or(0.0)
                         })
                         .sum::<f64>(),
                 )
@@ -90,27 +86,28 @@ impl Runner {
         unnormalized_probs.sort_by(|(_, v1), (_, v2)| v1.partial_cmp(v2).unwrap());
 
         match unnormalized_probs.last().unwrap() {
-            (k, v) if *v <= 0.0 => (*((*agent) as *mut dyn Agent)).set_action(time, Some(*k)),
+            (k, v) if *v <= 0.0 => agent.borrow_mut().set_action(time, Some(k.clone())),
             _ => {
-                let filtered_probs: Vec<(*const dyn Behaviour, f64)> = unnormalized_probs
+                let filtered_probs: Vec<(BehaviourPtr, f64)> = unnormalized_probs
                     .into_iter()
                     .filter(|(_, x)| *x > 0.0)
                     .collect();
                 match filtered_probs.len() {
-                    1 => (*((*agent) as *mut dyn Agent))
-                        .set_action(time, Some(filtered_probs.get(0).unwrap().0)),
+                    1 => agent
+                        .borrow_mut()
+                        .set_action(time, Some(filtered_probs.get(0).unwrap().0.clone())),
                     _ => {
-                        let map_probs: HashMap<*const dyn Behaviour, f64> =
+                        let map_probs: HashMap<BehaviourPtr, f64> =
                             filtered_probs.into_iter().collect();
                         let normalizing_factor: f64 = map_probs.values().sum();
-                        let normalized_probs: Vec<(*const dyn Behaviour, f64)> = map_probs
+                        let normalized_probs: Vec<(BehaviourPtr, f64)> = map_probs
                             .into_iter()
                             .map(|(k, v)| (k, v / normalizing_factor))
                             .collect();
 
                         let mut rng = rand::thread_rng();
                         let mut rv: f64 = rng.gen();
-                        let mut chosen_behaviour = normalized_probs.last().unwrap().0;
+                        let mut chosen_behaviour = normalized_probs.last().unwrap().0.clone();
 
                         for (behaviour, v) in normalized_probs.into_iter() {
                             rv -= v;
@@ -120,14 +117,14 @@ impl Runner {
                             }
                         }
 
-                        (*((*agent) as *mut dyn Agent)).set_action(time, Some(chosen_behaviour))
+                        agent.borrow_mut().set_action(time, Some(chosen_behaviour))
                     }
                 }
             }
         }
     }
 
-    unsafe fn perform_actions(&mut self, time: SimTime) {
+    fn perform_actions(&mut self, time: SimTime) {
         self.config
             .agents
             .iter()
