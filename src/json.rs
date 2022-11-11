@@ -19,8 +19,8 @@ pub struct BehaviourSpec {
 
 impl BehaviourSpec {
     /// Convert this [BehaviourSpec] into a [BasicBehaviour].
-    pub fn to_basic_behaviour(self) -> BasicBehaviour {
-        BasicBehaviour::new_with_uuid(self.name, self.uuid)
+    pub fn to_basic_behaviour(&self) -> BasicBehaviour {
+        BasicBehaviour::new_with_uuid(self.name.clone(), self.uuid)
     }
 }
 
@@ -38,31 +38,27 @@ pub struct BeliefSpec {
 impl BeliefSpec {
     pub fn to_basic_belief(&self, behaviours: &[BehaviourPtr]) -> BeliefPtr {
         let mut b = BasicBelief::new_with_uuid(self.name.clone(), self.uuid);
-        behaviours
-            .iter()
-            .for_each(|beh| match self.perceptions.get(beh.borrow().uuid()) {
-                Some(&v) => b.set_perception(beh.clone(), Some(v)).unwrap(),
-                None => (),
-            });
+        behaviours.iter().for_each(|beh| {
+            if let Some(&v) = self.perceptions.get(beh.borrow().uuid()) {
+                b.set_perception(beh.clone(), Some(v)).unwrap()
+            }
+        });
         b.into()
     }
 
     pub fn link_belief_relationships(&self, beliefs: &[BeliefPtr]) {
-        let uuid_beliefs: HashMap<Uuid, &BeliefPtr> = beliefs
-            .iter()
-            .map(|b| (b.borrow().uuid().clone(), b))
-            .collect();
-        self.relationships
-            .iter()
-            .for_each(|(r, &v)| match uuid_beliefs.get(&r) {
-                Some(b) => uuid_beliefs
+        let uuid_beliefs: HashMap<Uuid, &BeliefPtr> =
+            beliefs.iter().map(|b| (*b.borrow().uuid(), b)).collect();
+        self.relationships.iter().for_each(|(r, &v)| {
+            if let Some(b) = uuid_beliefs.get(r) {
+                uuid_beliefs
                     .get(&self.uuid)
                     .unwrap()
                     .borrow_mut()
                     .set_relationship((*b).clone(), Some(v))
-                    .unwrap(),
-                None => (),
-            })
+                    .unwrap()
+            }
+        })
     }
 }
 
@@ -91,29 +87,25 @@ pub struct PerformanceRelationshipSpec {
 impl AgentSpec {
     pub fn to_basic_agent(&self, behaviours: &[BehaviourPtr], beliefs: &[BeliefPtr]) -> AgentPtr {
         let mut a = BasicAgent::new_with_uuid(self.uuid);
-        let uuid_behaviours: HashMap<Uuid, &BehaviourPtr> = behaviours
-            .iter()
-            .map(|b| (b.borrow().uuid().clone(), b))
-            .collect();
+        let uuid_behaviours: HashMap<Uuid, &BehaviourPtr> =
+            behaviours.iter().map(|b| (*b.borrow().uuid(), b)).collect();
 
         self.actions.iter().for_each(|(&time, b)| {
-            a.set_action(time, Some((*uuid_behaviours.get(&b).unwrap()).clone()))
+            a.set_action(time, Some((*uuid_behaviours.get(b).unwrap()).clone()))
         });
 
-        let uuid_beliefs: HashMap<Uuid, &BeliefPtr> = beliefs
-            .iter()
-            .map(|b| (b.borrow().uuid().clone(), b))
-            .collect();
+        let uuid_beliefs: HashMap<Uuid, &BeliefPtr> =
+            beliefs.iter().map(|b| (*b.borrow().uuid(), b)).collect();
 
         self.activations.iter().for_each(|(&time, acts)| {
             acts.iter().for_each(|(b, &v)| {
-                a.set_activation(time, (*uuid_beliefs.get(&b).unwrap()).clone(), Some(v))
+                a.set_activation(time, (*uuid_beliefs.get(b).unwrap()).clone(), Some(v))
                     .unwrap()
             })
         });
 
         self.deltas.iter().for_each(|(b, &v)| {
-            a.set_delta((*uuid_beliefs.get(&b).unwrap()).clone(), Some(v))
+            a.set_delta((*uuid_beliefs.get(b).unwrap()).clone(), Some(v))
                 .unwrap()
         });
 
@@ -132,12 +124,12 @@ impl AgentSpec {
 
     pub fn from_agent(agent: &AgentPtr) -> Self {
         AgentSpec {
-            uuid: agent.borrow().uuid().clone(),
+            uuid: *agent.borrow().uuid(),
             actions: agent
                 .borrow()
                 .get_actions()
                 .iter()
-                .map(|(&k, v)| (k, v.borrow().uuid().clone()))
+                .map(|(&k, v)| (k, *v.borrow().uuid()))
                 .collect(),
             activations: agent
                 .borrow()
@@ -147,7 +139,7 @@ impl AgentSpec {
                     (
                         k1,
                         v1.iter()
-                            .map(|(k2, &v2)| (k2.borrow().uuid().clone(), v2))
+                            .map(|(k2, &v2)| (*k2.borrow().uuid(), v2))
                             .collect(),
                     )
                 })
@@ -156,13 +148,13 @@ impl AgentSpec {
                 .borrow()
                 .get_deltas()
                 .iter()
-                .map(|(k, &v)| (k.borrow().uuid().clone(), v))
+                .map(|(k, &v)| (*k.borrow().uuid(), v))
                 .collect(),
             friends: agent
                 .borrow()
                 .get_friends()
                 .iter()
-                .map(|(k, &v)| (k.borrow().uuid().clone(), v))
+                .map(|(k, &v)| (*k.borrow().uuid(), v))
                 .collect(),
         }
     }
@@ -272,7 +264,7 @@ mod test {
             let u = Uuid::new_v4();
             let bi = BehaviourSpec {
                 name: "b1".to_string(),
-                uuid: u.clone(),
+                uuid: u,
             };
             let bo = bi.to_basic_behaviour();
             assert_eq!(bo.name(), "b1");

@@ -32,7 +32,7 @@ impl Runner {
             .config
             .agents
             .iter()
-            .map(|a| AgentSpec::from_agent(a))
+            .map(AgentSpec::from_agent)
             .collect();
 
         info!("Writing agents to file");
@@ -58,7 +58,7 @@ impl Runner {
     fn perceive_beliefs(&mut self, time: SimTime) {
         self.config.agents.iter().for_each(|a| {
             self.config.beliefs.iter().for_each(|b| {
-                update_activation_for_agent(a, time, &b, &self.config.beliefs).unwrap();
+                update_activation_for_agent(a, time, b, &self.config.beliefs).unwrap();
             })
         });
     }

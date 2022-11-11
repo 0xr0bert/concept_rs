@@ -52,17 +52,17 @@ mod tests {
         let belief = BasicBelief::new("b1".to_string());
         let behaviour = BasicBehaviour::new("b1".to_string());
         prss.push(PerformanceRelationshipSpec {
-            behaviour_uuid: behaviour.uuid().clone(),
-            belief_uuid: belief.uuid().clone(),
+            behaviour_uuid: *behaviour.uuid(),
+            belief_uuid: *belief.uuid(),
             value: 0.2,
         });
         let mut beliefs: HashMap<Uuid, BeliefPtr> = HashMap::new();
         let belief_ptr = BeliefPtr::from(belief);
-        beliefs.insert(belief_ptr.borrow().uuid().clone(), belief_ptr.clone());
+        beliefs.insert(*belief_ptr.borrow().uuid(), belief_ptr.clone());
 
         let mut behaviours: HashMap<Uuid, BehaviourPtr> = HashMap::new();
         let behaviour_ptr = BehaviourPtr::from(behaviour);
-        behaviours.insert(behaviour_ptr.borrow().uuid().clone(), behaviour_ptr.clone());
+        behaviours.insert(*behaviour_ptr.borrow().uuid(), behaviour_ptr.clone());
 
         let result = vec_prs_to_performance_relationships(&prss, &beliefs, &behaviours);
         assert_eq!(result.len(), 1);

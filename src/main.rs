@@ -177,7 +177,7 @@ fn read_agent_json(
         .collect();
     let uuid_agents: HashMap<Uuid, AgentPtr> = agents
         .iter()
-        .map(|a| (a.borrow().uuid().clone(), a.clone()))
+        .map(|a| (*a.borrow().uuid(), a.clone()))
         .collect();
 
     agent_specs
@@ -203,12 +203,12 @@ fn read_prs_json(
         serde_json::from_reader(reader).with_context(|| "prs.json invalid")?;
     let uuid_beliefs: HashMap<Uuid, BeliefPtr> = beliefs
         .iter()
-        .map(|b| (b.borrow().uuid().clone(), b.clone()))
+        .map(|b| (*b.borrow().uuid(), b.clone()))
         .collect();
 
     let uuid_behaviours: HashMap<Uuid, BehaviourPtr> = behaviours
         .iter()
-        .map(|b| (b.borrow().uuid().clone(), b.clone()))
+        .map(|b| (*b.borrow().uuid(), b.clone()))
         .collect();
     Ok(vec_prs_to_performance_relationships(
         &prss,
