@@ -27,9 +27,9 @@ checksum = "d468802bab17cbc0cc575e9b053f41e72aa36bfa6b7f55e3529ffa43161b97fa"
 
 [[package]]
 name = "belief-spread"
-version = "0.10.1"
+version = "0.11.0-pre1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3109c385165edae92d8f66e7a88366797b41149977bfa3c982d931594cae1149"
+checksum = "283e479dd0d5fb22b271c24610689e2628dd05d5899db47c66be7099a3594ab9"
 dependencies = [
  "anyhow",
  "by_address",

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use anyhow::Result;
-use belief_spread::{update_activation_for_agent, AgentPtr, BehaviourPtr, SimTime};
+use belief_spread::{update_activation_for_all_beliefs_for_agent, AgentPtr, BehaviourPtr, SimTime};
 use log::info;
 use rand::Rng;
 
@@ -56,11 +56,9 @@ impl Runner {
     }
 
     fn perceive_beliefs(&mut self, time: SimTime) {
-        self.config.agents.iter().for_each(|a| {
-            self.config.beliefs.iter().for_each(|b| {
-                update_activation_for_agent(a, time, b, &self.config.beliefs).unwrap();
-            })
-        });
+        for a in self.config.agents.iter() {
+            update_activation_for_all_beliefs_for_agent(a, time, &self.config.beliefs).unwrap();
+        }
     }
 
     fn agent_perform_action(&self, agent: &AgentPtr, time: SimTime) {
