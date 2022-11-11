@@ -5,7 +5,7 @@ mod runner;
 use std::{collections::HashMap, fs::File, io};
 
 use anyhow::{Context, Result};
-use belief_spread::{AgentPtr, BehaviourPtr, BeliefPtr, SimTime};
+use belief_spread::{Agent, Behaviour, Belief, SimTime};
 use clap::Parser;
 use json::{AgentSpec, BehaviourSpec, BeliefSpec, PerformanceRelationshipSpec};
 use performance_relationships::{vec_prs_to_performance_relationships, PerformanceRelationships};
@@ -52,13 +52,13 @@ struct Cli {
 /// The configuration of the model.
 pub struct Configuration {
     /// The [Behaviour]s in the model.
-    behaviours: Vec<BehaviourPtr>,
+    behaviours: Vec<*const dyn Behaviour>,
 
     /// The [Belief]s in the model.
-    beliefs: Vec<BeliefPtr>,
+    beliefs: Vec<*const dyn Belief>,
 
     /// The [Agent]s in the model.
-    agents: Vec<AgentPtr>,
+    agents: Vec<*const dyn Agent>,
 
     /// The performance relationships in the model.
     prs: PerformanceRelationships,
@@ -87,30 +87,55 @@ fn main() -> Result<()> {
             .with_context(|| format!("File {} doesn't exist!", &args.output_file.display()))?,
     });
 
-    // Process behaviours
+    unsafe {
+        // Process behaviours
 
-    config.behaviours = read_behaviours_json(&args.behaviours_file)?;
+        config.behaviours = read_behaviours_json(&args.behaviours_file)?;
 
-    // Process beliefs
+        // Process beliefs
 
-    config.beliefs = read_belief_json(&args.beliefs_file, &config.behaviours)?;
+        config.beliefs = read_belief_json(
+            &args.beliefs_file,
+            &config.behaviours as &[*const dyn Behaviour] as *const [*const dyn Behaviour],
+        )?;
 
-    // Process agents
+        // Process agents
 
-    config.agents = read_agent_json(&args.agents_file, &config.beliefs, &config.behaviours)?;
+        config.agents = read_agent_json(
+            &args.agents_file,
+            &config.beliefs as &[*const dyn Belief] as *const [*const dyn Belief],
+            &config.behaviours as &[*const dyn Behaviour] as *const [*const dyn Behaviour],
+        )?;
 
-    // Process performance relationships
+        // Process performance relationships
 
-    config.prs = read_prs_json(&args.prs_file, &config.beliefs, &config.behaviours)?;
+        config.prs = read_prs_json(
+            &args.prs_file,
+            &config.beliefs as &[*const dyn Belief] as *const [*const dyn Belief],
+            &config.behaviours as &[*const dyn Behaviour] as *const [*const dyn Behaviour],
+        )?;
 
-    let mut run = Runner { config };
+        let mut run = Runner { config };
 
-    run.run()?;
+        run.run()?;
+
+        // Free everything
+        for behaviour in run.config.behaviours {
+            drop(Box::from_raw(behaviour as *mut dyn Behaviour))
+        }
+        for belief in run.config.beliefs {
+            drop(Box::from_raw(belief as *mut dyn Belief))
+        }
+
+        for agent in run.config.agents {
+            drop(Box::from_raw(agent as *mut dyn Agent))
+        }
+    }
 
     Ok(())
 }
 
-fn read_behaviours_json(path: &std::path::Path) -> Result<Vec<BehaviourPtr>> {
+fn read_behaviours_json(path: &std::path::Path) -> Result<Vec<*const dyn Behaviour>> {
     let file = File::open(path)
         .with_context(|| format!("Failed to read behaviours from {}", path.display()))?;
     let reader = io::BufReader::new(file);
@@ -118,46 +143,52 @@ fn read_behaviours_json(path: &std::path::Path) -> Result<Vec<BehaviourPtr>> {
         serde_json::from_reader(reader).with_context(|| "behaviours.json invalid")?;
     Ok(behaviours
         .into_iter()
-        .map(|spec| spec.to_basic_behaviour().into())
+        .map(|spec| spec.to_basic_behaviour())
+        .map(Box::new)
+        .map(Box::into_raw)
+        .map(|a| a as *const dyn Behaviour)
         .collect())
 }
 
-fn read_belief_json(path: &std::path::Path, behaviours: &[BehaviourPtr]) -> Result<Vec<BeliefPtr>> {
+unsafe fn read_belief_json(
+    path: &std::path::Path,
+    behaviours: *const [*const dyn Behaviour],
+) -> Result<Vec<*const dyn Belief>> {
     let file = File::open(path)
         .with_context(|| format!("Failed to read beliefs from {}", path.display()))?;
     let reader = io::BufReader::new(file);
     let belief_specs: Vec<BeliefSpec> =
         serde_json::from_reader(reader).with_context(|| "beliefs.json invalid")?;
-    let beliefs: Vec<BeliefPtr> = belief_specs
+    let beliefs: Vec<*const dyn Belief> = belief_specs
         .iter()
         .map(|spec| spec.to_basic_belief(behaviours))
         .collect();
 
-    belief_specs
-        .iter()
-        .for_each(|spec| spec.link_belief_relationships(&beliefs));
+    belief_specs.iter().for_each(|spec| {
+        spec.link_belief_relationships(
+            &beliefs as &[*const dyn Belief] as *const [*const dyn Belief],
+        )
+    });
     Ok(beliefs)
 }
 
-fn read_agent_json(
+unsafe fn read_agent_json(
     path: &std::path::Path,
-    beliefs: &[BeliefPtr],
-    behaviours: &[BehaviourPtr],
-) -> Result<Vec<AgentPtr>> {
+    beliefs: *const [*const dyn Belief],
+    behaviours: *const [*const dyn Behaviour],
+) -> Result<Vec<*const dyn Agent>> {
     let file = File::open(path)
         .with_context(|| format!("Failed to read agents from {}", path.display()))?;
     let reader = io::BufReader::new(file);
     let reader_zstd = zstd::stream::read::Decoder::new(reader)?;
     let agent_specs: Vec<AgentSpec> =
         serde_json::from_reader(reader_zstd).with_context(|| "agents.json invalid")?;
-    let agents: Vec<AgentPtr> = agent_specs
+    let agents: Vec<*const dyn Agent> = agent_specs
         .iter()
         .map(|spec| spec.to_basic_agent(behaviours, beliefs))
         .collect();
-    let uuid_agents: HashMap<Uuid, AgentPtr> = agents
-        .iter()
-        .map(|a| (*a.borrow().uuid(), a.clone()))
-        .collect();
+    let uuid_agents: HashMap<Uuid, *const dyn Agent> =
+        agents.iter().map(|a| (*(**a).uuid(), *a)).collect();
 
     agent_specs
         .iter()
@@ -166,10 +197,10 @@ fn read_agent_json(
     Ok(agents)
 }
 
-fn read_prs_json(
+unsafe fn read_prs_json(
     path: &std::path::Path,
-    beliefs: &[BeliefPtr],
-    behaviours: &[BehaviourPtr],
+    beliefs: *const [*const dyn Belief],
+    behaviours: *const [*const dyn Behaviour],
 ) -> Result<PerformanceRelationships> {
     let file = File::open(path).with_context(|| {
         format!(
@@ -180,15 +211,11 @@ fn read_prs_json(
     let reader = io::BufReader::new(file);
     let prss: Vec<PerformanceRelationshipSpec> =
         serde_json::from_reader(reader).with_context(|| "prs.json invalid")?;
-    let uuid_beliefs: HashMap<Uuid, BeliefPtr> = beliefs
-        .iter()
-        .map(|b| (*b.borrow().uuid(), b.clone()))
-        .collect();
+    let uuid_beliefs: HashMap<Uuid, *const dyn Belief> =
+        (*beliefs).iter().map(|b| (*(**b).uuid(), *b)).collect();
 
-    let uuid_behaviours: HashMap<Uuid, BehaviourPtr> = behaviours
-        .iter()
-        .map(|b| (*b.borrow().uuid(), b.clone()))
-        .collect();
+    let uuid_behaviours: HashMap<Uuid, *const dyn Behaviour> =
+        (*behaviours).iter().map(|b| (*(**b).uuid(), *b)).collect();
     Ok(vec_prs_to_performance_relationships(
         &prss,
         &uuid_beliefs,

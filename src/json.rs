@@ -1,9 +1,6 @@
 use std::collections::HashMap;
 
-use belief_spread::{
-    Agent, AgentPtr, BasicAgent, BasicBehaviour, BasicBelief, BehaviourPtr, Belief, BeliefPtr,
-    SimTime,
-};
+use belief_spread::{Agent, BasicAgent, BasicBehaviour, BasicBelief, Behaviour, Belief, SimTime};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -36,26 +33,26 @@ pub struct BeliefSpec {
 }
 
 impl BeliefSpec {
-    pub fn to_basic_belief(&self, behaviours: &[BehaviourPtr]) -> BeliefPtr {
+    pub unsafe fn to_basic_belief(
+        &self,
+        behaviours: *const [*const dyn Behaviour],
+    ) -> *const dyn Belief {
         let mut b = BasicBelief::new_with_uuid(self.name.clone(), self.uuid);
-        behaviours.iter().for_each(|beh| {
-            if let Some(&v) = self.perceptions.get(beh.borrow().uuid()) {
-                b.set_perception(beh.clone(), Some(v)).unwrap()
+        (*behaviours).iter().for_each(|beh| {
+            if let Some(&v) = self.perceptions.get((**beh).uuid()) {
+                b.set_perception(*beh, Some(v)).unwrap()
             }
         });
-        b.into()
+        Box::into_raw(Box::new(b))
     }
 
-    pub fn link_belief_relationships(&self, beliefs: &[BeliefPtr]) {
-        let uuid_beliefs: HashMap<Uuid, &BeliefPtr> =
-            beliefs.iter().map(|b| (*b.borrow().uuid(), b)).collect();
+    pub unsafe fn link_belief_relationships(&self, beliefs: *const [*const dyn Belief]) {
+        let uuid_beliefs: HashMap<Uuid, *const dyn Belief> =
+            (*beliefs).iter().map(|b| (*(**b).uuid(), *b)).collect();
         self.relationships.iter().for_each(|(r, &v)| {
             if let Some(b) = uuid_beliefs.get(r) {
-                uuid_beliefs
-                    .get(&self.uuid)
-                    .unwrap()
-                    .borrow_mut()
-                    .set_relationship((*b).clone(), Some(v))
+                (*((*uuid_beliefs.get(&self.uuid).unwrap()) as *mut dyn Belief))
+                    .set_relationship(*b, Some(v))
                     .unwrap()
             }
         })
@@ -85,76 +82,73 @@ pub struct PerformanceRelationshipSpec {
 }
 
 impl AgentSpec {
-    pub fn to_basic_agent(&self, behaviours: &[BehaviourPtr], beliefs: &[BeliefPtr]) -> AgentPtr {
+    pub unsafe fn to_basic_agent(
+        &self,
+        behaviours: *const [*const dyn Behaviour],
+        beliefs: *const [*const dyn Belief],
+    ) -> *const dyn Agent {
         let mut a = BasicAgent::new_with_uuid(self.uuid);
-        let uuid_behaviours: HashMap<Uuid, &BehaviourPtr> =
-            behaviours.iter().map(|b| (*b.borrow().uuid(), b)).collect();
+        let uuid_behaviours: HashMap<Uuid, *const dyn Behaviour> =
+            (*behaviours).iter().map(|b| (*(**b).uuid(), *b)).collect();
 
-        self.actions.iter().for_each(|(&time, b)| {
-            a.set_action(time, Some((*uuid_behaviours.get(b).unwrap()).clone()))
-        });
+        self.actions
+            .iter()
+            .for_each(|(&time, b)| a.set_action(time, Some(*uuid_behaviours.get(b).unwrap())));
 
-        let uuid_beliefs: HashMap<Uuid, &BeliefPtr> =
-            beliefs.iter().map(|b| (*b.borrow().uuid(), b)).collect();
+        let uuid_beliefs: HashMap<Uuid, *const dyn Belief> =
+            (*beliefs).iter().map(|b| (*(**b).uuid(), *b)).collect();
 
         self.activations.iter().for_each(|(&time, acts)| {
             acts.iter().for_each(|(b, &v)| {
-                a.set_activation(time, (*uuid_beliefs.get(b).unwrap()).clone(), Some(v))
+                a.set_activation(time, *uuid_beliefs.get(b).unwrap(), Some(v))
                     .unwrap()
             })
         });
 
-        self.deltas.iter().for_each(|(b, &v)| {
-            a.set_delta((*uuid_beliefs.get(b).unwrap()).clone(), Some(v))
-                .unwrap()
-        });
+        self.deltas
+            .iter()
+            .for_each(|(b, &v)| a.set_delta(*uuid_beliefs.get(b).unwrap(), Some(v)).unwrap());
 
-        a.into()
+        Box::into_raw(Box::new(a))
     }
 
-    pub fn link_friends(&self, agents: &HashMap<Uuid, AgentPtr>) {
-        let mut this_agent = agents.get(&self.uuid).unwrap().borrow_mut();
+    pub unsafe fn link_friends(&self, agents: &HashMap<Uuid, *const dyn Agent>) {
+        let this_agent = (*agents.get(&self.uuid).unwrap()) as *mut dyn Agent;
 
         self.friends.iter().for_each(|(a, &v)| {
-            this_agent
-                .set_friend_weight((*agents.get(a).unwrap()).clone(), Some(v))
+            (*this_agent)
+                .set_friend_weight(*agents.get(a).unwrap(), Some(v))
                 .unwrap()
         });
     }
 
-    pub fn from_agent(agent: &AgentPtr) -> Self {
+    pub unsafe fn from_agent(agent: *const dyn Agent) -> Self {
         AgentSpec {
-            uuid: *agent.borrow().uuid(),
-            actions: agent
-                .borrow()
+            uuid: *(*agent).uuid(),
+            actions: (*agent)
                 .get_actions()
                 .iter()
-                .map(|(&k, v)| (k, *v.borrow().uuid()))
+                .map(|(&k, v)| (k, *(**v).uuid()))
                 .collect(),
-            activations: agent
-                .borrow()
+            activations: (*agent)
                 .get_activations()
                 .iter()
                 .map(|(&k1, v1)| {
                     (
                         k1,
-                        v1.iter()
-                            .map(|(k2, &v2)| (*k2.borrow().uuid(), v2))
-                            .collect(),
+                        v1.iter().map(|(k2, &v2)| (*(**k2).uuid(), v2)).collect(),
                     )
                 })
                 .collect(),
-            deltas: agent
-                .borrow()
+            deltas: (*agent)
                 .get_deltas()
                 .iter()
-                .map(|(k, &v)| (*k.borrow().uuid(), v))
+                .map(|(k, &v)| (*(**k).uuid(), v))
                 .collect(),
-            friends: agent
-                .borrow()
+            friends: (*agent)
                 .get_friends()
                 .iter()
-                .map(|(k, &v)| (*k.borrow().uuid(), v))
+                .map(|(k, &v)| (*(**k).uuid(), v))
                 .collect(),
         }
     }
