@@ -5,7 +5,7 @@ use belief_spread::{update_activation_for_all_beliefs_for_agent, AgentPtr, Behav
 use log::info;
 use rand::Rng;
 
-use crate::{json::AgentSpec, Configuration};
+use crate::{json::OutputSpecs, Configuration};
 
 pub struct Runner {
     pub config: Box<Configuration>,
@@ -22,23 +22,24 @@ impl Runner {
         info!("End time: {}", self.config.end_time);
         self.tick_between(self.config.start_time, self.config.end_time);
         info!("Ending concept");
-        self.serialize_agents()?;
+        self.serialize_output()?;
         Ok(())
     }
 
-    pub fn serialize_agents(&mut self) -> Result<()> {
-        info!("Converting agents to AgentSpecs");
-        let specs: Vec<AgentSpec> = self
-            .config
-            .agents
-            .iter()
-            .map(AgentSpec::from_agent)
-            .collect();
+    pub fn serialize_output(&mut self) -> Result<()> {
+        info!("Preparing to dump output");
+        let specs: OutputSpecs = OutputSpecs::from_agents(
+            &self.config.agents,
+            &self.config.beliefs,
+            self.config.start_time,
+            self.config.end_time,
+        );
 
-        info!("Writing agents to file");
+        info!("Writing output to file");
         let writer = std::io::BufWriter::new(&mut self.config.output_file);
-        let writer_zstd = zstd::stream::write::Encoder::new(writer, 3)?;
+        let writer_zstd = zstd::stream::write::Encoder::new(writer, 3)?.auto_finish();
         serde_json::to_writer(writer_zstd, &specs)?;
+
         Ok(())
     }
 

@@ -121,42 +121,137 @@ impl AgentSpec {
                 .unwrap()
         });
     }
+}
 
-    pub fn from_agent(agent: &AgentPtr) -> Self {
-        AgentSpec {
-            uuid: *agent.borrow().uuid(),
-            actions: agent
-                .borrow()
-                .get_actions()
-                .iter()
-                .map(|(&k, v)| (k, *v.borrow().uuid()))
-                .collect(),
-            activations: agent
-                .borrow()
-                .get_activations()
-                .iter()
-                .map(|(&k1, v1)| {
-                    (
-                        k1,
-                        v1.iter()
-                            .map(|(k2, &v2)| (*k2.borrow().uuid(), v2))
-                            .collect(),
-                    )
-                })
-                .collect(),
-            deltas: agent
-                .borrow()
-                .get_deltas()
-                .iter()
-                .map(|(k, &v)| (*k.borrow().uuid(), v))
-                .collect(),
-            friends: agent
-                .borrow()
-                .get_friends()
-                .iter()
-                .map(|(k, &v)| (*k.borrow().uuid(), v))
-                .collect(),
-        }
+#[derive(Deserialize, Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct OutputSpec {
+    pub mean_activation: HashMap<Uuid, f64>,
+    pub sd_activation: HashMap<Uuid, f64>,
+    pub median_activation: HashMap<Uuid, f64>,
+    pub nonzero_activation_count: HashMap<Uuid, usize>,
+    pub n_performers: HashMap<Uuid, usize>,
+}
+
+#[derive(Deserialize, Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct OutputSpecs {
+    pub data: HashMap<SimTime, OutputSpec>,
+}
+
+impl OutputSpecs {
+    pub fn from_agents(
+        agents: &[AgentPtr],
+        beliefs: &[BeliefPtr],
+        start_time: SimTime,
+        end_time: SimTime,
+    ) -> Self {
+        let data: HashMap<SimTime, OutputSpec> = (start_time..=end_time)
+            .map(|t| {
+                // Calculate avg_activation
+                let mut mean_activation: HashMap<Uuid, f64> = HashMap::new();
+
+                for agent in agents {
+                    if let Some(m) = agent.borrow().get_activations().get(&t) {
+                        for (belief, activation) in m {
+                            let entry = mean_activation
+                                .entry(*belief.borrow().uuid())
+                                .or_insert(0.0);
+                            *entry += activation;
+                        }
+                    }
+                }
+
+                let n_agents = agents.len();
+                for (_, activation) in mean_activation.iter_mut() {
+                    *activation /= n_agents as f64;
+                }
+
+                // Calculate sd_activation
+                let mut sd_activation: HashMap<Uuid, f64> = HashMap::new();
+
+                for agent in agents {
+                    if let Some(m) = agent.borrow().get_activations().get(&t) {
+                        for (belief, activation) in m {
+                            let entry = sd_activation.entry(*belief.borrow().uuid()).or_insert(0.0);
+
+                            *entry += f64::powf(
+                                activation - mean_activation.get(belief.borrow().uuid()).unwrap(),
+                                2.0,
+                            )
+                        }
+                    }
+                }
+
+                for (_, sd) in sd_activation.iter_mut() {
+                    *sd = f64::sqrt(*sd / ((n_agents - 1) as f64));
+                }
+
+                // Calculate median activation
+                let mut activations_by_uuid: HashMap<Uuid, Vec<f64>> = HashMap::new();
+
+                for agent in agents {
+                    let agent_ptr = agent.borrow();
+                    for belief in beliefs {
+                        let entry = activations_by_uuid
+                            .entry(*belief.borrow().uuid())
+                            .or_insert_with(Vec::new);
+                        entry.push(agent_ptr.get_activation(t, belief).unwrap_or(0.0));
+                    }
+                }
+
+                let middle_index = n_agents / 2;
+
+                let mut median_activation: HashMap<Uuid, f64> = HashMap::new();
+
+                for (uuid, mut acts) in activations_by_uuid {
+                    acts.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
+                    median_activation.insert(uuid, *acts.get(middle_index).unwrap());
+                }
+
+                // Calculate non_zero activation count
+                let mut nonzero_activation_count: HashMap<Uuid, usize> = HashMap::new();
+
+                for agent in agents {
+                    if let Some(m) = agent.borrow().get_activations().get(&t) {
+                        for (belief, activation) in m {
+                            if *activation != 0.0 {
+                                let entry = nonzero_activation_count
+                                    .entry(*belief.borrow().uuid())
+                                    .or_insert(0);
+                                *entry += 1;
+                            }
+                        }
+                    }
+                }
+
+                // Calculate n_performers
+                let n_performers: HashMap<Uuid, usize> = agents
+                    .iter()
+                    .flat_map(|a| {
+                        a.borrow()
+                            .get_action(t)
+                            .map(|action| *action.borrow().uuid())
+                    })
+                    .fold(HashMap::new(), |mut counts, elem| {
+                        let count = counts.entry(elem).or_insert(0);
+                        *count += 1;
+                        counts
+                    });
+                (
+                    t,
+                    OutputSpec {
+                        mean_activation,
+                        sd_activation,
+                        median_activation,
+                        nonzero_activation_count,
+                        n_performers,
+                    },
+                )
+            })
+            .collect();
+
+        Self { data }
     }
 }
 
