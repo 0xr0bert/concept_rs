@@ -13,7 +13,6 @@ pub struct Runner {
 
 impl Runner {
     pub fn run(&mut self) -> Result<()> {
-        simple_logger::init_with_env().unwrap();
         info!("Starting concept");
         info!("n beliefs: {}", self.config.beliefs.len());
         info!("n behaviours: {}", self.config.behaviours.len());

@@ -74,6 +74,7 @@ pub struct Configuration {
 }
 
 fn main() -> Result<()> {
+    simple_logger::init_with_env().unwrap();
     let args = Cli::parse();
 
     let mut config: Box<Configuration> = Box::new(Configuration {
@@ -144,6 +145,7 @@ fn read_agent_json(
     beliefs: &[BeliefPtr],
     behaviours: &[BehaviourPtr],
 ) -> Result<Vec<AgentPtr>> {
+    log::info!("Reading agents");
     let file = File::open(path)
         .with_context(|| format!("Failed to read agents from {}", path.display()))?;
     let reader = io::BufReader::new(file);
